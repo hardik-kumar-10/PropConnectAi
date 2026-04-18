@@ -2,8 +2,6 @@
 
 PropConnect AI is a cutting-edge, voice-first real estate sales agent designed specifically for the Indian market. It uses advanced AI to qualify leads, pitch properties, and capture data in real-time through natural voice conversation.
 
-![PropConnect UI](https://raw.githubusercontent.com/hardik-kumar-10/PropConnectAi/main/public/demo_screenshot.png) *(Note: Add your screenshot to public folder)*
-
 ## 🚀 Features
 
 - **Real-time Voice Interface**: Seamless, low-latency conversation using OpenAI Whisper (STT) and Google Cloud TTS.
