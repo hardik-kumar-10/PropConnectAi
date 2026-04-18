@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # 🏠 PropConnect AI — Voice Sales Agent (Gemini)
 
 Real-time voice AI sales agent using Google Gemini for STT + chat, with Web Speech API for TTS.
@@ -33,3 +34,6 @@ npm run dev
 ```
 Browser mic → Gemini 1.5 Flash (STT) → Gemini 1.5 Flash (chat) → Web Speech API (TTS)
 ```
+=======
+# PropConnectAi
+>>>>>>> ae72dc52e198913b75f4be6534243e668dd728ce
