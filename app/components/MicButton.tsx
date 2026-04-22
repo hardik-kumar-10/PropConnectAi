@@ -104,10 +104,12 @@ const styles: Record<string, React.CSSProperties> = {
   },
   speakingRing: {
     position: "absolute",
-    inset: "-12px",
+    inset: "-15px",
     borderRadius: "50%",
-    border: "2px solid rgba(54, 116, 181, 0.2)",
-    animation: "pulse-ring 2s ease-out infinite",
+    background: "radial-gradient(circle, rgba(54, 116, 181, 0.15) 0%, transparent 70%)",
+    border: "1px solid rgba(161, 227, 249, 0.3)",
+    animation: "pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite",
+    boxShadow: "0 0 40px rgba(54, 116, 181, 0.1)",
   },
   button: {
     width: "88px",
