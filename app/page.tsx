@@ -3,6 +3,7 @@
 import { useState, useCallback } from "react";
 import VoiceAgent from "./components/VoiceAgent";
 import LeadPanel from "./components/LeadPanel";
+import MapPanel from "./components/MapPanel";
 import Header from "./components/Header";
 
 export interface Message {
@@ -13,21 +14,28 @@ export interface Message {
 }
 
 export interface LeadData {
-  name?: string;
+  lead_name?: string;
   budget?: string;
   location?: string;
-  bhk?: string;
+  bhk_type?: string;
   timeline?: string;
   phone?: string;
   score: number;
+  // Geocoding info
+  lat?: number;
+  lng?: number;
+  formatted_address?: string;
+  nearby_landmarks?: string[];
 }
 
 export default function Home() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [leadData, setLeadData] = useState<LeadData>({ score: 0 });
-  const [sessionId] = useState(() => `session_${Date.now()}`);
+  const [sessionId, setSessionId] = useState("");
 
-  const addMessage = useCallback((role: "user" | "assistant", text: string) => {
+  const addMessage = useCallback((role: "user" | "assistant", text: string, newSessionId?: string) => {
+    console.log("[DEBUG] addMessage called:", role, text);
+    if (newSessionId) setSessionId(newSessionId);
     setMessages((prev) => [
       ...prev,
       { id: `${Date.now()}_${Math.random()}`, role, text, timestamp: new Date() },
@@ -35,26 +43,24 @@ export default function Home() {
   }, []);
 
   const updateLead = useCallback((extracted: Partial<LeadData>) => {
-    // Helper: only accept non-null, non-empty, non-"null" string values
     const valid = (v: unknown): v is string =>
       typeof v === "string" && v.trim() !== "" && v.toLowerCase() !== "null";
 
     setLeadData((prev) => {
-      const updated = { ...prev };
-      if (valid(extracted.name))     updated.name = extracted.name.trim();
-      if (valid(extracted.budget))   updated.budget = extracted.budget.trim();
-      if (valid(extracted.location)) updated.location = extracted.location.trim();
-      if (valid(extracted.bhk))      updated.bhk = extracted.bhk.trim();
-      if (valid(extracted.timeline)) updated.timeline = extracted.timeline.trim();
-      if (valid(extracted.phone))    updated.phone = extracted.phone.trim();
+      const updated = { ...prev, ...extracted };
+      if (!valid(extracted.lead_name)) delete updated.lead_name;
+      if (!valid(extracted.budget)) delete updated.budget;
+      if (!valid(extracted.location)) delete updated.location;
+      if (!valid(extracted.bhk_type)) delete updated.bhk_type;
+      if (!valid(extracted.timeline)) delete updated.timeline;
+      if (!valid(extracted.phone)) delete updated.phone;
 
-      // Score calculation
       let score = 0;
       if (updated.budget) score += 25;
       if (updated.location) score += 25;
-      if (updated.bhk) score += 20;
+      if (updated.bhk_type) score += 20;
       if (updated.timeline) score += 20;
-      if (updated.name) score += 5;
+      if (updated.lead_name) score += 5;
       if (updated.phone) score += 5;
       updated.score = score;
 
@@ -64,13 +70,15 @@ export default function Home() {
 
   return (
     <div style={styles.app}>
-      {/* Background mesh */}
-      <div style={styles.bgMesh} />
+      {/* Background Layers */}
+      <div className="bg-grid" style={styles.bgGrid} />
+      <div style={styles.bgFluid} />
       <div style={styles.bgOrb1} />
       <div style={styles.bgOrb2} />
+      <div style={styles.bgOrb3} />
 
       <div style={styles.layout}>
-        <div style={styles.main}>
+        <main style={styles.main}>
           <Header />
           <VoiceAgent
             messages={messages}
@@ -79,8 +87,17 @@ export default function Home() {
             onAddMessage={addMessage}
             onUpdateLead={updateLead}
           />
-        </div>
+        </main>
+
         <LeadPanel leadData={leadData} messageCount={messages.length} />
+
+        <MapPanel
+          lat={leadData.lat}
+          lng={leadData.lng}
+          formattedAddress={leadData.location}
+          locationName={leadData.location}
+          nearbyLandmarks={leadData.nearby_landmarks}
+        />
       </div>
     </div>
   );
@@ -88,51 +105,82 @@ export default function Home() {
 
 const styles: Record<string, React.CSSProperties> = {
   app: {
-    minHeight: "100vh",
+    height: "100vh",
+    width: "100vw",
     position: "relative",
     overflow: "hidden",
+    background: "#f8fafc",
   },
-  bgMesh: {
+  bgGrid: {
     position: "fixed",
     inset: 0,
-    background: `radial-gradient(ellipse 80% 60% at 20% 20%, rgba(108,99,255,0.08) 0%, transparent 60%),
-                 radial-gradient(ellipse 60% 40% at 80% 80%, rgba(67,232,176,0.06) 0%, transparent 50%)`,
-    pointerEvents: "none",
     zIndex: 0,
+    pointerEvents: "none",
+  },
+  bgFluid: {
+    position: "fixed",
+    inset: 0,
+    zIndex: 0,
+    background: `radial-gradient(circle at 10% 20%, rgba(54, 116, 181, 0.1) 0%, transparent 40%),
+                 radial-gradient(circle at 90% 80%, rgba(161, 227, 249, 0.3) 0%, transparent 50%),
+                 radial-gradient(circle at 50% 50%, rgba(209, 248, 239, 0.2) 0%, transparent 60%)`,
+    filter: "blur(100px)",
+    animation: "fluid-mesh 25s ease-in-out infinite alternate",
+    pointerEvents: "none",
   },
   bgOrb1: {
     position: "fixed",
-    top: "-10%",
-    left: "-5%",
-    width: "40vw",
-    height: "40vw",
+    top: "10%",
+    left: "15%",
+    width: "450px",
+    height: "450px",
     borderRadius: "50%",
-    background: "radial-gradient(circle, rgba(108,99,255,0.05) 0%, transparent 70%)",
-    pointerEvents: "none",
+    background: "rgba(161, 227, 249, 0.25)",
+    filter: "blur(70px)",
     zIndex: 0,
+    animation: "float-slow 18s ease-in-out infinite",
+    pointerEvents: "none",
   },
   bgOrb2: {
     position: "fixed",
-    bottom: "-10%",
-    right: "-5%",
-    width: "50vw",
-    height: "50vw",
+    bottom: "10%",
+    right: "15%",
+    width: "550px",
+    height: "550px",
     borderRadius: "50%",
-    background: "radial-gradient(circle, rgba(67,232,176,0.04) 0%, transparent 70%)",
-    pointerEvents: "none",
+    background: "rgba(54, 116, 181, 0.12)",
+    filter: "blur(90px)",
     zIndex: 0,
+    animation: "float-medium 22s ease-in-out infinite",
+    pointerEvents: "none",
+  },
+  bgOrb3: {
+    position: "fixed",
+    top: "35%",
+    right: "5%",
+    width: "300px",
+    height: "300px",
+    borderRadius: "50%",
+    background: "rgba(209, 248, 239, 0.35)",
+    filter: "blur(50px)",
+    zIndex: 0,
+    animation: "float-slow 14s ease-in-out infinite alternate-reverse",
+    pointerEvents: "none",
   },
   layout: {
     position: "relative",
     zIndex: 1,
     display: "flex",
-    height: "100vh",
-    gap: 0,
+    height: "100%",
+    width: "100%",
+    overflow: "hidden",
   },
   main: {
     flex: 1,
+    height: "100%",
     display: "flex",
     flexDirection: "column",
     minWidth: 0,
+    position: "relative",
   },
 };

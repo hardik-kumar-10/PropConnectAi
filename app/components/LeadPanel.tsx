@@ -1,5 +1,4 @@
-"use client";
-
+import { useState, useEffect } from "react";
 import type { LeadData } from "../page";
 
 interface Props {
@@ -24,10 +23,10 @@ function getScoreLabel(score: number): string {
 }
 
 function getScoreColor(score: number): string {
-  if (score >= 75) return "#43e8b0";
-  if (score >= 50) return "#ffd27f";
-  if (score >= 25) return "#ff9f5a";
-  return "var(--text3)";
+  if (score >= 75) return "#3674B5";
+  if (score >= 50) return "#578FCA";
+  if (score >= 25) return "#A1E3F9";
+  return "#94a3b8";
 }
 
 interface FieldProps {
@@ -61,14 +60,15 @@ const fieldStyles: Record<string, React.CSSProperties> = {
     display: "flex",
     alignItems: "center",
     gap: "12px",
-    padding: "10px 0",
-    borderBottom: "1px solid rgba(42,42,58,0.4)",
+    padding: "12px 0",
+    borderBottom: "1px solid rgba(54, 116, 181, 0.05)",
   },
   icon: {
     fontSize: "16px",
     width: "24px",
     textAlign: "center",
     flexShrink: 0,
+    opacity: 0.7,
   },
   content: {
     flex: 1,
@@ -78,157 +78,196 @@ const fieldStyles: Record<string, React.CSSProperties> = {
   },
   label: {
     fontSize: "10px",
-    color: "var(--text3)",
+    color: "#578FCA",
     textTransform: "uppercase",
     letterSpacing: "0.06em",
-    fontWeight: 600,
+    fontWeight: 800,
   },
   value: {
-    fontSize: "13px",
+    fontSize: "13.5px",
   },
   valueSet: {
-    color: "var(--text)",
-    fontWeight: 500,
+    color: "#3674B5",
+    fontWeight: 700,
   },
   valueEmpty: {
-    color: "var(--text3)",
+    color: "#94a3b8",
     fontStyle: "italic",
+    opacity: 0.6,
   },
   check: {
     width: "18px",
     height: "18px",
     borderRadius: "50%",
-    background: "rgba(67,232,176,0.15)",
-    color: "#43e8b0",
+    background: "#D1F8EF",
+    color: "#3674B5",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
     fontSize: "10px",
-    fontWeight: 700,
+    fontWeight: 800,
     flexShrink: 0,
   },
 };
 
 export default function LeadPanel({ leadData, messageCount }: Props) {
-  const scoreColor = getScoreColor(leadData.score);
+  const [isMobile, setIsMobile] = useState(false);
+  const [isOpen, setIsOpen] = useState(false);
   const scoreLabel = getScoreLabel(leadData.score);
 
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth <= 768);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+
+  const panelStyle: React.CSSProperties = {
+    ...styles.panel,
+    ...(isMobile ? {
+      right: "12px",
+      top: "12px",
+      bottom: "12px",
+      width: "calc(100% - 24px)",
+      maxWidth: "340px",
+      transform: isOpen ? "translateX(0)" : "translateX(calc(100% + 24px))",
+      transition: "transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275)",
+    } : {})
+  };
+
   return (
-    <aside style={styles.panel}>
-      <div style={styles.header}>
-        <span style={styles.headerTitle}>Lead Intelligence</span>
-        <span style={styles.headerBadge}>LIVE</span>
-      </div>
+    <>
+      {isMobile && (
+        <button 
+          onClick={() => setIsOpen(!isOpen)}
+          style={{
+            ...styles.mobileToggle,
+            background: isOpen ? "#3674B5" : "rgba(255, 255, 255, 0.9)",
+            color: isOpen ? "#ffffff" : "#3674B5",
+          }}
+        >
+          {isOpen ? "✕" : "📊 Insights"}
+        </button>
+      )}
 
-      {/* Score */}
-      <div style={styles.scoreCard}>
-        <div style={styles.scoreTop}>
-          <span style={styles.scoreLabel}>Qualification Score</span>
-          <span style={{ ...styles.scoreValue, color: scoreColor }}>
-            {leadData.score}%
-          </span>
+      <aside style={panelStyle}>
+        <div style={styles.header}>
+          <span style={styles.headerTitle}>Lead Intelligence</span>
+          {!isMobile && <span style={styles.headerBadge}>LIVE</span>}
         </div>
-        <div style={styles.scoreBar}>
-          <div
-            style={{
-              ...styles.scoreFill,
-              width: `${leadData.score}%`,
-              background: `linear-gradient(90deg, ${scoreColor}88, ${scoreColor})`,
-              boxShadow: `0 0 8px ${scoreColor}66`,
-            }}
-          />
-        </div>
-        <div style={{ ...styles.scoreBadge, color: scoreColor, borderColor: `${scoreColor}44`, background: `${scoreColor}11` }}>
-          {scoreLabel}
-        </div>
-      </div>
 
-      {/* Lead fields */}
-      <div style={styles.fields}>
-        <LeadField label="Name" value={leadData.name} icon="👤" />
-        <LeadField label="Budget" value={leadData.budget} icon="💰" />
-        <LeadField label="Location" value={leadData.location} icon="📍" />
-        <LeadField label="BHK Type" value={leadData.bhk} icon="🏠" />
-        <LeadField label="Timeline" value={leadData.timeline} icon="📅" />
-        <LeadField label="Phone" value={leadData.phone} icon="📞" />
-      </div>
+        <div style={styles.scoreCard}>
+          <div style={styles.scoreTop}>
+            <span style={styles.scoreLabel}>Qualification Score</span>
+            <span style={{ ...styles.scoreValue, color: "#3674B5" }}>
+              {leadData.score}%
+            </span>
+          </div>
+          <div style={styles.scoreBar}>
+            <div
+              style={{
+                ...styles.scoreFill,
+                width: `${leadData.score}%`,
+                background: `linear-gradient(90deg, #A1E3F9, #3674B5)`,
+                boxShadow: `0 2px 8px rgba(54, 116, 181, 0.2)`,
+              }}
+            />
+          </div>
+          <div style={{ ...styles.scoreBadge, color: "#3674B5", borderColor: "rgba(54, 116, 181, 0.2)", background: "#D1F8EF" }}>
+            {scoreLabel}
+          </div>
+        </div>
 
-      {/* Stats */}
-      <div style={styles.stats}>
-        <div style={styles.stat}>
-          <span style={styles.statValue}>{messageCount}</span>
-          <span style={styles.statLabel}>Messages</span>
+        <div style={styles.fields}>
+          <LeadField label="Name" value={leadData.lead_name} icon="👤" />
+          <LeadField label="Budget" value={leadData.budget} icon="💰" />
+          <LeadField label="Location" value={leadData.location} icon="📍" />
+          <LeadField label="BHK Type" value={leadData.bhk_type} icon="🏠" />
+          <LeadField label="Timeline" value={leadData.timeline} icon="📅" />
+          <LeadField label="Phone" value={leadData.phone} icon="📞" />
         </div>
-        <div style={styles.statDivider} />
-        <div style={styles.stat}>
-          <span style={styles.statValue}>
-            {[leadData.budget, leadData.location, leadData.bhk, leadData.timeline, leadData.name, leadData.phone].filter(Boolean).length}
-            /6
-          </span>
-          <span style={styles.statLabel}>Fields</span>
-        </div>
-        <div style={styles.statDivider} />
-        <div style={styles.stat}>
-          <span style={{ ...styles.statValue, color: scoreColor }}>{scoreLabel.replace("🔥 ", "")}</span>
-          <span style={styles.statLabel}>Intent</span>
-        </div>
-      </div>
 
-      {/* Footer note */}
-      <p style={styles.footer}>
-        Lead data is extracted automatically from the voice conversation in real-time.
-      </p>
-    </aside>
+        <div style={styles.stats}>
+          <div style={styles.stat}>
+            <span style={styles.statValue}>{messageCount}</span>
+            <span style={styles.statLabel}>Messages</span>
+          </div>
+          <div style={styles.statDivider} />
+          <div style={styles.stat}>
+            <span style={styles.statValue}>
+              {[leadData.budget, leadData.location, leadData.bhk_type, leadData.timeline, leadData.lead_name, leadData.phone].filter(Boolean).length}
+              /6
+            </span>
+            <span style={styles.statLabel}>Fields</span>
+          </div>
+          <div style={styles.statDivider} />
+          <div style={styles.stat}>
+            <span style={{ ...styles.statValue, color: "#3674B5" }}>{scoreLabel.replace("🔥 ", "")}</span>
+            <span style={styles.statLabel}>Intent</span>
+          </div>
+        </div>
+
+        <p style={styles.footer}>
+          Extracted in real-time by PropAi.
+        </p>
+      </aside>
+    </>
   );
 }
 
 const styles: Record<string, React.CSSProperties> = {
   panel: {
-    width: "280px",
-    flexShrink: 0,
-    borderLeft: "1px solid rgba(42,42,58,0.5)",
-    background: "rgba(17,17,24,0.7)",
-    backdropFilter: "blur(16px)",
+    position: "absolute",
+    top: "24px",
+    right: "24px",
+    bottom: "24px",
+    width: "320px",
+    zIndex: 100,
+    background: "rgba(255, 255, 255, 0.8)",
+    backdropFilter: "blur(24px)",
+    WebkitBackdropFilter: "blur(24px)",
+    border: "1px solid rgba(255, 255, 255, 0.6)",
+    borderRadius: "32px",
     display: "flex",
     flexDirection: "column",
     padding: "0",
     overflow: "hidden",
+    boxShadow: "0 20px 60px rgba(54, 116, 181, 0.08)",
   },
   header: {
-    padding: "20px 20px 16px",
-    borderBottom: "1px solid rgba(42,42,58,0.4)",
+    padding: "24px 24px 20px",
+    borderBottom: "1px solid rgba(54, 116, 181, 0.05)",
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
   },
   headerTitle: {
-    fontFamily: "var(--font-display)",
-    fontSize: "13px",
+    fontFamily: "'Playfair Display', serif",
+    fontSize: "16px",
     fontWeight: 700,
-    color: "var(--text2)",
-    letterSpacing: "0.04em",
-    textTransform: "uppercase",
+    color: "#3674B5",
+    letterSpacing: "0",
+    textTransform: "none",
   },
   headerBadge: {
-    fontSize: "9px",
-    fontWeight: 700,
-    color: "#ff6584",
-    background: "rgba(255,101,132,0.1)",
-    border: "1px solid rgba(255,101,132,0.3)",
-    padding: "2px 6px",
-    borderRadius: "4px",
-    letterSpacing: "0.08em",
-    animation: "glow-pulse 2s ease-in-out infinite",
+    fontSize: "10px",
+    fontWeight: 900,
+    color: "#3674B5",
+    background: "#D1F8EF",
+    padding: "4px 10px",
+    borderRadius: "20px",
+    letterSpacing: "0.05em",
   },
   scoreCard: {
-    margin: "16px 20px",
-    padding: "16px",
-    background: "rgba(10,10,15,0.5)",
-    border: "1px solid rgba(42,42,58,0.6)",
-    borderRadius: "12px",
+    margin: "24px",
+    padding: "24px",
+    background: "#fff",
+    border: "1px solid rgba(54, 116, 181, 0.1)",
+    borderRadius: "24px",
     display: "flex",
     flexDirection: "column",
-    gap: "10px",
+    gap: "12px",
+    boxShadow: "0 8px 24px rgba(54, 116, 181, 0.04)",
   },
   scoreTop: {
     display: "flex",
@@ -237,45 +276,47 @@ const styles: Record<string, React.CSSProperties> = {
   },
   scoreLabel: {
     fontSize: "11px",
-    color: "var(--text3)",
-    fontWeight: 600,
+    color: "#578FCA",
+    fontWeight: 800,
     textTransform: "uppercase",
-    letterSpacing: "0.05em",
+    letterSpacing: "0.08em",
   },
   scoreValue: {
-    fontFamily: "var(--font-display)",
-    fontSize: "22px",
-    fontWeight: 800,
+    fontFamily: "'Playfair Display', serif",
+    fontSize: "32px",
+    fontWeight: 700,
   },
   scoreBar: {
-    height: "6px",
-    borderRadius: "3px",
-    background: "rgba(42,42,58,0.8)",
+    height: "10px",
+    borderRadius: "5px",
+    background: "#f1f5f9",
     overflow: "hidden",
   },
   scoreFill: {
     height: "100%",
-    borderRadius: "3px",
+    borderRadius: "5px",
     transition: "width 0.8s cubic-bezier(0.4,0,0.2,1)",
   },
   scoreBadge: {
     alignSelf: "flex-start",
     fontSize: "11px",
-    fontWeight: 600,
-    padding: "3px 8px",
-    borderRadius: "6px",
-    border: "1px solid",
-    letterSpacing: "0.03em",
+    fontWeight: 900,
+    padding: "5px 12px",
+    borderRadius: "10px",
+    border: "1px solid rgba(54, 116, 181, 0.1)",
+    letterSpacing: "0.04em",
+    textTransform: "uppercase",
   },
   fields: {
     flex: 1,
-    padding: "0 20px",
+    padding: "0 24px",
     overflowY: "auto",
   },
   stats: {
     display: "flex",
-    padding: "16px 20px",
-    borderTop: "1px solid rgba(42,42,58,0.4)",
+    padding: "24px",
+    borderTop: "1px solid rgba(54, 116, 181, 0.05)",
+    background: "rgba(255,255,255,0.4)",
     gap: "0",
   },
   stat: {
@@ -286,28 +327,45 @@ const styles: Record<string, React.CSSProperties> = {
     gap: "4px",
   },
   statValue: {
-    fontFamily: "var(--font-display)",
-    fontSize: "18px",
-    fontWeight: 700,
-    color: "var(--text)",
+    fontSize: "22px",
+    fontWeight: 900,
+    color: "#3674B5",
   },
   statLabel: {
     fontSize: "10px",
-    color: "var(--text3)",
+    color: "#578FCA",
     textTransform: "uppercase",
-    letterSpacing: "0.05em",
+    letterSpacing: "0.08em",
+    fontWeight: 800,
   },
   statDivider: {
     width: "1px",
-    background: "rgba(42,42,58,0.6)",
-    margin: "4px 0",
+    background: "rgba(54, 116, 181, 0.1)",
+    margin: "6px 0",
   },
   footer: {
-    padding: "12px 20px",
+    padding: "16px 24px",
     fontSize: "10px",
-    color: "var(--text3)",
-    lineHeight: "1.5",
-    borderTop: "1px solid rgba(42,42,58,0.3)",
-    fontStyle: "italic",
+    color: "#578FCA",
+    fontWeight: 600,
+    borderTop: "1px solid rgba(54, 116, 181, 0.05)",
+    textAlign: "center",
+    opacity: 0.7,
+  },
+  mobileToggle: {
+    position: "fixed",
+    top: "14px",
+    right: "16px",
+    zIndex: 1001,
+    padding: "10px 18px",
+    borderRadius: "15px",
+    border: "1px solid rgba(54, 116, 181, 0.2)",
+    fontSize: "12px",
+    fontWeight: 900,
+    boxShadow: "0 10px 30px rgba(54, 116, 181, 0.15)",
+    backdropFilter: "blur(10px)",
+    WebkitBackdropFilter: "blur(10px)",
+    cursor: "pointer",
+    transition: "all 0.3s ease",
   },
 };

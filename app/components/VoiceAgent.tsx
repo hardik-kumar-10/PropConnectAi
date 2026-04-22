@@ -9,7 +9,7 @@ interface Props {
   messages: Message[];
   sessionId: string;
   leadData: LeadData;
-  onAddMessage: (role: "user" | "assistant", text: string) => void;
+  onAddMessage: (role: "user" | "assistant", text: string, sessionId?: string) => void;
   onUpdateLead: (data: Partial<LeadData>) => void;
 }
 
@@ -54,23 +54,6 @@ export default function VoiceAgent({
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // Greet once on load
-  useEffect(() => {
-    if (greetedRef.current) return;
-    greetedRef.current = true;
-    const t = setTimeout(() => {
-      onAddMessage(
-        "assistant",
-        "Namaste! 🏠 I'm Priya from PropConnect. I help find your perfect home in India. Tell me — what's your budget and preferred location?"
-      );
-      speakText(
-        "Namaste! I'm Priya from PropConnect. I help find your perfect home in India. Tell me — what's your budget and preferred location?"
-      );
-    }, 800);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   // Web Speech API TTS fallback
   const speakText = useCallback((text: string) => {
     if (typeof window === "undefined" || !window.speechSynthesis) return;
@@ -89,6 +72,26 @@ export default function VoiceAgent({
     utter.onerror = () => setAgentState("idle");
     window.speechSynthesis.speak(utter);
   }, []);
+
+  // Greet once on load
+  useEffect(() => {
+    // If we already have messages, don't greet
+    if (messages.length > 0) return;
+
+    console.log("[DEBUG] Chat is empty. Starting greeting timer...");
+    const t = setTimeout(() => {
+      // Check again inside the timeout to be safe
+      onAddMessage(
+        "assistant",
+        "Hey! I'm PropConnect AI, your personal home finder. I'd love to help you find the perfect property. To get started, could you tell me your name?"
+      );
+      speakText(
+        "Hey! I'm PropConnect AI, your personal home finder. I'd love to help you find the perfect property. To get started, could you tell me your name?"
+      );
+    }, 1500);
+
+    return () => clearTimeout(t);
+  }, [onAddMessage, speakText]); // Removed messages.length dependency to prevent multiple triggers
 
   // Play MP3 from base64 (Google TTS), fall back to Web Speech
   const playReply = useCallback(
@@ -115,12 +118,12 @@ export default function VoiceAgent({
       try {
         const formData = new FormData();
         formData.append("audio", blob, "recording.webm");
-        formData.append("sessionId", sessionId);
-        formData.append("leadData", JSON.stringify(leadData));
+        formData.append("session_id", sessionId);
+        formData.append("history", JSON.stringify(messages.map(m => ({ role: m.role, content: m.text }))));
 
         const res = await fetch("/api/voice", {
           method: "POST",
-          body: formData, // no Content-Type header — browser sets multipart boundary
+          body: formData,
         });
 
         if (!res.ok) {
@@ -130,12 +133,12 @@ export default function VoiceAgent({
         }
 
         const data = await res.json();
-        if (data.userText) onAddMessage("user", data.userText);
-        if (data.replyText) onAddMessage("assistant", data.replyText);
-        if (data.extractedLead) onUpdateLead(data.extractedLead);
+        if (data.transcript) onAddMessage("user", data.transcript, data.session_id);
+        if (data.reply) onAddMessage("assistant", data.reply, data.session_id);
+        if (data.lead_data) onUpdateLead(data.lead_data);
 
-        if (data.replyText) {
-          playReply(data.replyText, data.audio ?? "", data.useFallbackTTS ?? true);
+        if (data.reply) {
+          playReply(data.reply, data.audio_base64 ?? "", !data.audio_base64);
         } else {
           setAgentState("idle");
         }
@@ -222,17 +225,26 @@ export default function VoiceAgent({
     }
   };
 
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth <= 768);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+
   return (
     <div style={styles.container}>
       <div style={styles.chatArea}>
         {messages.length === 0 ? (
-          <div style={styles.emptyState}>
-            <div style={styles.emptyIcon}>🎙️</div>
-            <p style={styles.emptyText}>Press the mic and start talking</p>
-            <p style={styles.emptySubtext}>Speak in English, Hindi, or Hinglish</p>
+          <div style={{ ...styles.emptyState, paddingLeft: isMobile ? "0" : "40px", alignItems: isMobile ? "center" : "flex-start", textAlign: isMobile ? "center" : "left" }}>
+            <div style={styles.emptyIcon}>🏠</div>
+            <p style={{ ...styles.emptyText, fontFamily: "'Playfair Display', serif", fontSize: "32px", fontWeight: 700 }}>Welcome to PropConnect AI</p>
+            <p style={styles.emptySubtext}>Press the microphone to begin your property search</p>
           </div>
         ) : (
-          <div style={styles.messageList}>
+          <div style={{ ...styles.messageList, paddingRight: isMobile ? "0" : "360px", paddingLeft: isMobile ? "0" : "40px" }}>
             {messages.map((msg) => (
               <ChatBubble key={msg.id} message={msg} />
             ))}
@@ -242,13 +254,13 @@ export default function VoiceAgent({
       </div>
 
       {error && (
-        <div style={styles.error}>
+        <div style={{ ...styles.error, margin: isMobile ? "0 16px 12px" : "0 380px 12px 32px" }}>
           <span>⚠️ {error}</span>
           <button style={styles.errorClose} onClick={() => setError(null)}>×</button>
         </div>
       )}
 
-      <div style={styles.controls}>
+      <div style={{ ...styles.controls, paddingRight: isMobile ? "32px" : "360px" }}>
         {agentState === "recording" && (
           <div style={styles.recordingBadge}>
             <span style={styles.recDot} />
@@ -259,7 +271,7 @@ export default function VoiceAgent({
         {agentState === "processing" && (
           <div style={styles.processingHint}>
             <span style={styles.dot} /><span style={styles.dot2} /><span style={styles.dot3} />
-            <span style={styles.processingText}>Priya is thinking...</span>
+            <span style={styles.processingText}>PropAi is thinking...</span>
           </div>
         )}
 
@@ -284,25 +296,25 @@ export default function VoiceAgent({
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  container: { flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" },
+  container: { flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", background: "transparent" },
   chatArea: { flex: 1, overflowY: "auto", padding: "24px 32px" },
-  emptyState: { display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", gap: "12px", opacity: 0.5 },
-  emptyIcon: { fontSize: "48px", marginBottom: "8px" },
-  emptyText: { fontFamily: "var(--font-display)", fontSize: "18px", color: "var(--text2)", fontWeight: 600 },
-  emptySubtext: { fontSize: "13px", color: "var(--text3)" },
-  messageList: { display: "flex", flexDirection: "column", gap: "12px", maxWidth: "720px", margin: "0 auto", width: "100%" },
-  error: { margin: "0 32px 12px", padding: "10px 16px", background: "rgba(255,101,132,0.1)", border: "1px solid rgba(255,101,132,0.3)", borderRadius: "10px", color: "#ff6584", fontSize: "13px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px" },
-  errorClose: { background: "none", border: "none", color: "#ff6584", fontSize: "18px", cursor: "pointer", lineHeight: 1 },
-  controls: { padding: "20px 32px 32px", display: "flex", flexDirection: "column", alignItems: "center", gap: "12px", borderTop: "1px solid rgba(42,42,58,0.4)", background: "rgba(10,10,15,0.4)", backdropFilter: "blur(12px)" },
-  recordingBadge: { display: "flex", alignItems: "center", gap: "8px", padding: "6px 16px", background: "rgba(255,80,80,0.12)", border: "1px solid rgba(255,80,80,0.35)", borderRadius: "20px" },
-  recDot: { width: "8px", height: "8px", borderRadius: "50%", background: "#ff5050", animation: "pulse 1s infinite" },
-  recText: { fontSize: "13px", color: "#ff8080" },
-  processingHint: { display: "flex", alignItems: "center", gap: "6px", fontSize: "13px", color: "var(--text2)" },
-  processingText: { marginLeft: "4px", fontStyle: "italic" },
-  dot: { display: "inline-block", width: "6px", height: "6px", borderRadius: "50%", background: "var(--accent)", animation: "dot-bounce 1.2s infinite" },
-  dot2: { display: "inline-block", width: "6px", height: "6px", borderRadius: "50%", background: "var(--accent)", animation: "dot-bounce 1.2s infinite 0.2s" },
-  dot3: { display: "inline-block", width: "6px", height: "6px", borderRadius: "50%", background: "var(--accent)", animation: "dot-bounce 1.2s infinite 0.4s" },
-  speakingHint: { display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", color: "var(--text2)", maxWidth: "400px", textAlign: "center" },
-  speakingText: { color: "var(--text3)", fontStyle: "italic" },
-  hint: { fontSize: "12px", color: "var(--text3)", letterSpacing: "0.04em", marginTop: "4px" },
+  emptyState: { display: "flex", flexDirection: "column", alignItems: "flex-start", justifyContent: "center", height: "100%", gap: "12px", opacity: 0.8, paddingLeft: "40px" },
+  emptyIcon: { fontSize: "56px", marginBottom: "8px" },
+  emptyText: { fontSize: "22px", color: "#3674B5", fontWeight: 800 },
+  emptySubtext: { fontSize: "14px", color: "#578FCA", fontWeight: 500 },
+  messageList: { display: "flex", flexDirection: "column", gap: "24px", width: "100%", paddingRight: "360px", paddingLeft: "40px" },
+  error: { margin: "0 380px 12px 32px", padding: "12px 16px", background: "rgba(254, 242, 242, 0.8)", backdropFilter: "blur(8px)", border: "1px solid #fee2e2", borderRadius: "10px", color: "#991b1b", fontSize: "13px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px" },
+  errorClose: { background: "none", border: "none", color: "#991b1b", fontSize: "18px", cursor: "pointer", lineHeight: 1 },
+  controls: { padding: "24px 32px 32px", paddingRight: "360px", display: "flex", flexDirection: "column", alignItems: "center", gap: "12px", borderTop: "1px solid rgba(54, 116, 181, 0.08)", background: "rgba(255, 255, 255, 0.4)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", boxShadow: "0 -8px 30px rgba(54, 116, 181, 0.05)" },
+  recordingBadge: { display: "flex", alignItems: "center", gap: "8px", padding: "8px 18px", background: "#fff1f2", border: "1px solid #fecaca", borderRadius: "20px" },
+  recDot: { width: "10px", height: "10px", borderRadius: "50%", background: "#e11d48", animation: "pulse 1s infinite" },
+  recText: { fontSize: "14px", color: "#9f1239", fontWeight: 500 },
+  processingHint: { display: "flex", alignItems: "center", gap: "8px", fontSize: "14px", color: "#1e3a8a" },
+  processingText: { marginLeft: "4px", fontStyle: "italic", fontWeight: 500 },
+  dot: { display: "inline-block", width: "8px", height: "8px", borderRadius: "50%", background: "#1e3a8a", animation: "dot-bounce 1.2s infinite" },
+  dot2: { display: "inline-block", width: "8px", height: "8px", borderRadius: "50%", background: "#1e3a8a", animation: "dot-bounce 1.2s infinite 0.2s" },
+  dot3: { display: "inline-block", width: "8px", height: "8px", borderRadius: "50%", background: "#1e3a8a", animation: "dot-bounce 1.2s infinite 0.4s" },
+  speakingHint: { display: "flex", alignItems: "center", gap: "10px", fontSize: "14px", color: "#065f46", maxWidth: "500px", textAlign: "center", background: "#f0fdf4", padding: "8px 16px", borderRadius: "20px", border: "1px solid #dcfce7" },
+  speakingText: { color: "#065f46", fontStyle: "italic", fontWeight: 500 },
+  hint: { fontSize: "12px", color: "#94a3b8", fontWeight: 500, marginTop: "4px" },
 };
