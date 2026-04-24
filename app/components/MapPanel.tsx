@@ -8,6 +8,7 @@ interface MapPanelProps {
     formattedAddress?: string
     nearbyLandmarks?: string[]
     locationName?: string
+    listings?: any[]
 }
 
 export default function MapPanel({
@@ -16,6 +17,7 @@ export default function MapPanel({
     formattedAddress,
     nearbyLandmarks = [],
     locationName,
+    listings = [],
 }: MapPanelProps) {
     const mapRef = useRef<HTMLDivElement>(null)
     const mapInstanceRef = useRef<google.maps.Map | null>(null)
@@ -74,27 +76,13 @@ export default function MapPanel({
             animation: window.google.maps.Animation.DROP,
         })
 
-        // Dummy properties (Ocean Blue markers)
+        // Properties from real-time data
         propertyMarkersRef.current.forEach(m => m.setMap(null))
         propertyMarkersRef.current = []
 
-        const dummyProps = [
-            { lat: lat + 0.0015, lng: lng + 0.002, title: "Skyline Premium", price: "₹50,000 / mo", type: "2BHK Rental" },
-            { lat: lat - 0.002, lng: lng + 0.001, title: "Sunrise Studios", price: "₹35 Lakhs", type: "1BHK Sale" },
-            { lat: lat + 0.001, lng: lng - 0.003, title: "Imperial Vista", price: "₹1.0 Cr", type: "3BHK Premium" },
-            { lat: lat + 0.003, lng: lng + 0.004, title: "Urban Square", price: "₹75,000 / mo", type: "3BHK Rental" },
-            { lat: lat - 0.0035, lng: lng - 0.0025, title: "Emerald Heights", price: "₹65 Lakhs", type: "2BHK Sale" },
-            { lat: lat + 0.0045, lng: lng - 0.001, title: "The Metro Nest", price: "₹85,000 / mo", type: "Luxury Suite" },
-            { lat: lat - 0.001, lng: lng + 0.005, title: "Sapphire Terrace", price: "₹1.2 Lakhs / mo", type: "Penthouse Rent" },
-            { lat: lat + 0.0025, lng: lng - 0.0045, title: "Pine Grove", price: "₹95 Lakhs", type: "3BHK Sale" },
-            { lat: lat - 0.004, lng: lng + 0.0035, title: "Modern Arch", price: "₹85 Lakhs", type: "2BHK + Study" },
-            { lat: lat + 0.0055, lng: lng + 0.002, title: "Central Residency", price: "₹1.0 Cr", type: "3BHK Luxury" },
-            { lat: lat - 0.0025, lng: lng - 0.0055, title: "Park View", price: "₹55,000 / mo", type: "1BHK Rental" },
-            { lat: lat + 0.0035, lng: lng - 0.003, title: "Skyline Plaza", price: "₹1.5 Lakhs / mo", type: "Commercial Space" },
-            { lat: lat - 0.005, lng: lng - 0.001, title: "Heritage Court", price: "₹45 Lakhs", type: "1BHK Sale" }
-        ]
+        const displayProps = listings.length > 0 ? listings : []
 
-        dummyProps.forEach(p => {
+        displayProps.forEach(p => {
             const m = new window.google.maps.Marker({
                 position: { lat: p.lat, lng: p.lng },
                 map: mapInstanceRef.current,
@@ -113,18 +101,17 @@ export default function MapPanel({
                 <div style="color:#1a365d; padding:12px; font-family: 'Inter', sans-serif; min-width: 200px;">
                     <h3 style="margin:0 0 6px 0; font-size:16px; color:#3674B5; font-weight:800;">${p.title}</h3>
                     <p style="margin:0; font-weight:900; font-size:18px; color:#1a365d;">${p.price}</p>
-                    <p style="margin:6px 0 10px 0; font-size:13px; color:#578FCA; font-weight:600;">${p.type}</p>
-                    <button style="width:100%; padding:8px; background:#D1F8EF; border:none; border-radius:8px; color:#3674B5; font-weight:800; cursor:pointer; font-size:12px;">VIEW LAYOUT</button>
+                    <p style="margin:6px 0 10px 0; font-size:13px; color:#578FCA; font-weight:600;">${p.type} (${p.source || 'Listing'})</p>
+                    <a href="${p.link}" target="_blank" style="display:block; text-align:center; text-decoration:none; width:100%; padding:8px; background:#D1F8EF; border:none; border-radius:8px; color:#3674B5; font-weight:800; cursor:pointer; font-size:12px;">VIEW ON ${p.source?.toUpperCase() || 'SITE'}</a>
                 </div>
             `})
 
             m.addListener('click', () => {
-                propertyMarkersRef.current.forEach(otherM => { /* close others if needed */ })
                 iw.open(mapInstanceRef.current, m)
             })
             propertyMarkersRef.current.push(m)
         })
-    }, [isLoaded, lat, lng, locationName, formattedAddress, isExpanded])
+    }, [isLoaded, lat, lng, locationName, formattedAddress, isExpanded, listings])
 
     // ── Toggle Handler ───────────────────────────────────────────────────────
     const toggleMap = () => setIsExpanded(!isExpanded)

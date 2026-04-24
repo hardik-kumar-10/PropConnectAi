@@ -185,6 +185,7 @@ export default function LeadPanel({ leadData, messageCount }: Props) {
           <LeadField label="BHK Type" value={leadData.bhk_type} icon="🏠" />
           <LeadField label="Timeline" value={leadData.timeline} icon="📅" />
           <LeadField label="Phone" value={leadData.phone} icon="📞" />
+          <LeadField label="Preferences" value={leadData.preferences} icon="✨" />
         </div>
 
         <div style={styles.stats}>

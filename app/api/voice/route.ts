@@ -5,6 +5,8 @@ import {
   saveMessage,
   upsertLead,
   updateSession,
+  Lead,
+  supabase
 } from '@/app/lib/supabase'
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
@@ -24,11 +26,13 @@ interface LeadData {
   score?: number
   lead_name?: string
   phone?: string
+  preferences?: string
   // Populated after Google Places lookup
   formatted_address?: string
   lat?: number
   lng?: number
   nearby_landmarks?: string[]
+  listings?: any[]
 }
 
 // ── Google Places helper ───────────────────────────────────────────────────
@@ -74,26 +78,38 @@ async function enrichLocation(location: string): Promise<{
 
 // ── System prompts ─────────────────────────────────────────────────────────
 
-function buildSalesSystemPrompt(landmarks: string[]): string {
+function buildSalesSystemPrompt(landmarks: string[], marketData?: string, listings?: any[]): string {
   const landmarkContext =
     landmarks.length > 0
       ? `\n\nNearby landmarks you can mention naturally in conversation: ${landmarks.join(', ')}.`
       : ''
 
+  const marketContext = marketData
+    ? `\n\nMarket insights for this area:\n${marketData}`
+    : ''
+
+  const listingContext = listings && listings.length > 0
+    ? `\n\nCRITICAL: You MUST mention at least 2 of these specific properties by their FULL NAME and PRICE in your reply:
+    ${listings.map(l => `- "${l.title}" available for ${l.price}`).join('\n')}
+    
+    If you don't mention the name and price, you are failing your job.`
+    : ''
+
   return `You are PropAi, a friendly and persuasive real estate sales agent for PropConnect AI, specialising in the Indian property market.
 
 Your goals:
 1. Build rapport quickly in a natural, warm, and professional tone.
-2. Understand the buyer's needs (budget, location, BHK, timeline) through conversation, NOT an interview.
-3. Pitch the lifestyle and benefits of properties, not just the stats.
-4. Handle objections with empathy (e.g., "I understand your concern about the distance...").
-5. Always end with a natural, open-ended question to keep them talking.
+2. Understand the buyer's needs (budget, location, BHK, timeline).
+3. Pitch specific properties using the REAL-TIME LISTINGS provided below.
+4. Always end with a natural, open-ended question.
 
 Guidelines:
-- Language: Use clear, professional, and sophisticated English at all times. Strictly NO Hinglish or slang.
-- NO EMOJIS in your response.
-- Keep responses concise (2-3 sentences) but meaningful.
-- Avoid being repetitive. If you already know their location, talk about landmarks.${landmarkContext}`
+- Language: Sophisticated English. Strictly NO Hinglish.
+- NO EMOJIS.
+- Be extremely specific. Mention property names and exact prices.
+- FORMATTING: Use clear bullet points and line breaks for listing properties. For example:
+  - **Property Name**: Price and details.
+- If listings are provided, prioritize pitching them over general advice.${landmarkContext}${marketContext}${listingContext}`
 }
 
 const EXTRACTION_SYSTEM_PROMPT = `You are a data extraction engine. Given a real estate sales conversation, extract structured JSON with these exact keys:
@@ -104,6 +120,7 @@ const EXTRACTION_SYSTEM_PROMPT = `You are a data extraction engine. Given a real
   "timeline": string or null,
   "lead_name": string or null,
   "phone": string or null,
+  "preferences": string or null (capture any other specific needs like floor, amenities, pet-friendly, etc.),
   "score": number (0-100)
 }
 
@@ -115,6 +132,86 @@ Scoring guide:
 - +20 if name or phone is mentioned
 
 Return ONLY valid JSON. No explanation, no markdown.`
+
+// ── NoBroker API helper ────────────────────────────────────────────────────
+
+async function fetchNoBrokerListings(lat: number, lng: number, bhk?: string, locationName?: string): Promise<any[]> {
+  try {
+    const searchParam = Buffer.from(JSON.stringify([{
+      lat,
+      lon: lng,
+      placeId: "custom_id", // Simplified for internal use
+      placeName: locationName || "Selected Area"
+    }])).toString('base64');
+
+    // Map BHK type to NoBroker codes (BHK1, BHK2, etc.)
+    let typeCode = 'BHK2'; // Default
+    if (bhk) {
+      const match = bhk.match(/\d/);
+      if (match) typeCode = `BHK${match[0]}`;
+    }
+
+    // Determine city from locationName or fallback to bangalore
+    let city = 'bangalore';
+    const locLower = (locationName || '').toLowerCase();
+    if (locLower.includes('mumbai')) city = 'mumbai';
+    else if (locLower.includes('delhi')) city = 'delhi';
+    else if (locLower.includes('chennai')) city = 'chennai';
+    else if (locLower.includes('pune')) city = 'pune';
+    else if (locLower.includes('hyderabad')) city = 'hyderabad';
+    else if (locLower.includes('gurgaon') || locLower.includes('gurugram')) city = 'gurgaon';
+
+    const url = `https://www.nobroker.in/api/v1/property/filter/region/all?pageNo=1&searchParam=${searchParam}&type=${typeCode}&city=${city}&radius=2.0`;
+
+    const res = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      }
+    });
+
+    if (!res.ok) return [];
+
+    const data = await res.json();
+    return (data.properties || []).slice(0, 10).map((p: any) => ({
+      title: p.propertyTitle,
+      price: p.priceDisplay || `${p.price / 100000} Lakhs`,
+      type: p.secondaryTitle,
+      link: `https://www.nobroker.in/property/buy/bangalore/${p.propertyId}`,
+      lat: p.latitude,
+      lng: p.longitude,
+      source: 'NoBroker'
+    }));
+  } catch (err) {
+    console.error('[NoBroker] fetch error:', err);
+    return [];
+  }
+}
+
+// ── Market Data helper ─────────────────────────────────────────────────────
+
+async function getMarketInsights(city?: string, area?: string): Promise<string> {
+  if (!city && !area) return '';
+
+  try {
+    let query = supabase.from('market_data').select('*');
+    if (area) query = query.ilike('area', `%${area}%`);
+    if (city) query = query.ilike('city', `%${city}%`);
+
+    const { data, error } = await query.limit(50);
+    if (error || !data || data.length === 0) return '';
+
+    const avgRent = Math.round(data.reduce((sum, item) => sum + item.rent_amount, 0) / data.length);
+    const petFriendly = data.filter(item => item.animal_allowance === 'acept').length / data.length > 0.5;
+    const furnishedRatio = data.filter(item => item.furniture === 'furnished').length / data.length;
+
+    return `- Average rent in this area is approximately ₹${avgRent.toLocaleString()}.
+- ${petFriendly ? 'Most properties here are pet-friendly.' : 'Pet policies vary by building.'}
+- ${furnishedRatio > 0.4 ? 'A good portion of units come furnished.' : 'Most units are unfurnished, giving you more freedom to design.'}`;
+  } catch (err) {
+    console.error('[MarketData] error:', err);
+    return '';
+  }
+}
 
 // ── Main handler ───────────────────────────────────────────────────────────
 
@@ -146,11 +243,25 @@ export async function POST(req: NextRequest) {
       const transcription = await openai.audio.transcriptions.create({
         model: 'whisper-1',
         file: audioBlob,
-        // Custom prompt boosts accuracy for Indian city names & Hinglish
+        language: 'en', // Force English transcription
+        // Custom prompt boosts accuracy for Indian city names & strictly enforces English
         prompt:
-          'Indian real estate conversation. Mumbai, Delhi, Bangalore, Noida, Gurgaon, Gurugram. Terms: BHK, crore, lakh, flat, villa, registry, possession, amenities, gated community, ready to move, under construction, floor plan.',
+          'Indian real estate conversation in English. Transcribe strictly in English. Mumbai, Delhi, Bangalore, Noida, Gurgaon, Gurugram. Terms: BHK, crore, lakh, flat, villa, registry, possession, amenities, gated community, ready to move, under construction, floor plan, next month, immediate, next year, timeline.',
       })
       userText = transcription.text
+
+      // ── Hallucination Filter ──────────────────────────────────────────────
+      const hallucinations = [
+        'next word, snake',
+        'thanks for watching',
+        'please subscribe',
+        'next time',
+      ]
+      const lowerText = userText.toLowerCase().trim().replace(/[.,!]/g, '')
+      if (hallucinations.some(h => lowerText === h)) {
+        console.warn('[Whisper] Hallucination detected:', userText)
+        return NextResponse.json({ error: 'Audio unclear, please try again' }, { status: 400 })
+      }
     } else {
       // Allow text-only fallback (useful for testing)
       userText = (formData.get('text') as string) || ''
@@ -165,54 +276,27 @@ export async function POST(req: NextRequest) {
       await saveMessage({ session_id: sessionId, role: 'user', content: userText })
     }
 
-    // ── Lead extraction (runs in parallel with sales response) ────────────
+    // ── 1. Lead extraction ────────────────────────────────────────────────
     const updatedHistory: ConversationMessage[] = [
       ...history,
       { role: 'user', content: userText },
     ]
 
-    const [salesResponse, extractionResponse] = await Promise.all([
-      // 1. Sales agent response
-      openai.chat.completions.create({
-        model: 'gpt-4o-mini',
-        messages: [
-          { role: 'system', content: buildSalesSystemPrompt([]) },
-          ...updatedHistory,
-        ],
-        max_tokens: 150,
-        temperature: 0.7,
-      }),
+    const extractionResponse = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: EXTRACTION_SYSTEM_PROMPT },
+        {
+          role: 'user',
+          content: `Conversation so far:\n${updatedHistory
+            .map((m) => `${m.role.toUpperCase()}: ${m.content}`)
+            .join('\n')}`,
+        },
+      ],
+      max_tokens: 200,
+      temperature: 0,
+    })
 
-      // 2. Lead data extraction
-      openai.chat.completions.create({
-        model: 'gpt-4o-mini',
-        messages: [
-          { role: 'system', content: EXTRACTION_SYSTEM_PROMPT },
-          {
-            role: 'user',
-            content: `Conversation so far:\n${updatedHistory
-              .map((m) => `${m.role.toUpperCase()}: ${m.content}`)
-              .join('\n')}`,
-          },
-        ],
-        max_tokens: 200,
-        temperature: 0,
-      }),
-    ])
-
-    const assistantReply =
-      salesResponse.choices[0]?.message?.content?.trim() ?? ''
-
-    // ── Save assistant message ─────────────────────────────────────────────
-    if (sessionId) {
-      await saveMessage({
-        session_id: sessionId,
-        role: 'assistant',
-        content: assistantReply,
-      })
-    }
-
-    // ── Parse lead data ────────────────────────────────────────────────────
     let leadData: LeadData = {}
     try {
       const raw = extractionResponse.choices[0]?.message?.content ?? '{}'
@@ -221,60 +305,70 @@ export async function POST(req: NextRequest) {
       console.warn('[Extraction] JSON parse failed')
     }
 
-    // ── Enrich location with Google Places ────────────────────────────────
+    // ── 2. Intelligence Gathering ──────────────────────────────────────────
+    let marketInsights = ''
+    let listings: any[] = []
+
     if (leadData.location) {
       const geoInfo = await enrichLocation(leadData.location)
       leadData = { ...leadData, ...geoInfo }
 
-      // Re-run sales response with landmark context if we have landmarks
-      if (
-        geoInfo.nearby_landmarks &&
-        geoInfo.nearby_landmarks.length > 0 &&
-        history.length === 0 // only on first location mention to avoid repetition
-      ) {
-        const enrichedResponse = await openai.chat.completions.create({
-          model: 'gpt-4o-mini',
-          messages: [
-            {
-              role: 'system',
-              content: buildSalesSystemPrompt(geoInfo.nearby_landmarks),
-            },
-            ...updatedHistory,
-          ],
-          max_tokens: 150,
-          temperature: 0.7,
-        })
-        const enrichedReply =
-          enrichedResponse.choices[0]?.message?.content?.trim()
-        if (enrichedReply) {
-          // Update the assistant message with landmark-aware reply
-          leadData.nearby_landmarks = geoInfo.nearby_landmarks
-        }
-      }
+      const [insights, realListings] = await Promise.all([
+        getMarketInsights(
+          geoInfo.formatted_address?.split(',').slice(-2, -1)[0]?.trim() || 'Bangalore',
+          leadData.location
+        ),
+        geoInfo.lat && geoInfo.lng
+          ? fetchNoBrokerListings(geoInfo.lat, geoInfo.lng, leadData.bhk_type, leadData.location)
+          : Promise.resolve([])
+      ])
+
+      marketInsights = insights
+      listings = realListings
+      leadData.listings = listings
     }
 
-    // ── Persist lead + session updates to Supabase ─────────────────────────
+    // ── 3. Sales Agent Response (with full context) ────────────────────────
+    const salesResponse = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        {
+          role: 'system',
+          content: buildSalesSystemPrompt(leadData.nearby_landmarks || [], marketInsights, listings)
+        },
+        ...updatedHistory,
+      ],
+      max_tokens: 250,
+      temperature: 0.7,
+    })
+
+    const assistantReply = salesResponse.choices[0]?.message?.content?.trim() ?? ''
+
+    // ── 4. Persistence ─────────────────────────────────────────────────────
     if (sessionId) {
-      await upsertLead({
-        session_id: sessionId,
-        budget: leadData.budget ?? undefined,
-        location: leadData.location ?? undefined,
-        bhk_type: leadData.bhk_type ?? undefined,
-        timeline: leadData.timeline ?? undefined,
-        phone: leadData.phone ?? undefined,
-        score: leadData.score ?? 0,
-      })
-
-      if (leadData.lead_name || leadData.phone || leadData.score !== undefined) {
-        await updateSession(sessionId, {
-          lead_name: leadData.lead_name ?? undefined,
+      await Promise.all([
+        saveMessage({ session_id: sessionId, role: 'assistant', content: assistantReply }),
+        upsertLead({
+          session_id: sessionId,
+          budget: leadData.budget ?? undefined,
+          location: leadData.location ?? undefined,
+          bhk_type: leadData.bhk_type ?? undefined,
+          timeline: leadData.timeline ?? undefined,
           phone: leadData.phone ?? undefined,
-          score: leadData.score ?? undefined,
-        })
-      }
+          preferences: leadData.preferences ?? undefined,
+          score: leadData.score ?? 0,
+        } as Lead),
+        (leadData.lead_name || leadData.phone || leadData.score !== undefined)
+          ? updateSession(sessionId, {
+            lead_name: leadData.lead_name ?? undefined,
+            phone: leadData.phone ?? undefined,
+            score: leadData.score ?? undefined,
+          })
+          : Promise.resolve()
+      ])
     }
 
-    // ── Google TTS ────────────────────────────────────────────────────────
+    // ── 5. Google TTS ──────────────────────────────────────────────────────
     let audioBase64: string | null = null
     if (process.env.GOOGLE_TTS_API_KEY) {
       try {

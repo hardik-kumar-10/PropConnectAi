@@ -31,6 +31,7 @@ export interface Lead {
     bhk_type?: string
     timeline?: string
     phone?: string
+    preferences?: string
     score?: number
     created_at?: string
 }

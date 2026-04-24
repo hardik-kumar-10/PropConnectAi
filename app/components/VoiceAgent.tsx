@@ -40,6 +40,7 @@ export default function VoiceAgent({
   const [error, setError] = useState<string | null>(null);
   const [currentAudioText, setCurrentAudioText] = useState("");
   const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const [inputText, setInputText] = useState("");
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -150,6 +151,46 @@ export default function VoiceAgent({
     },
     [sessionId, leadData, onAddMessage, onUpdateLead, playReply]
   );
+
+  // Send text message → backend (GPT-4o-mini chat)
+  const sendTextMessage = useCallback(async (text: string) => {
+    if (!text.trim()) return;
+    setAgentState("processing");
+    setInputText("");
+
+    try {
+      const formData = new FormData();
+      formData.append("text", text);
+      formData.append("session_id", sessionId);
+      formData.append("history", JSON.stringify(messages.map(m => ({ role: m.role, content: m.text }))));
+
+      const res = await fetch("/api/voice", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!res.ok) {
+        let errMsg = `Server error ${res.status}`;
+        try { const j = await res.json(); errMsg = j.error || errMsg; } catch { /* ignore */ }
+        throw new Error(errMsg);
+      }
+
+      const data = await res.json();
+      onAddMessage("user", text, data.session_id);
+      if (data.reply) onAddMessage("assistant", data.reply, data.session_id);
+      if (data.lead_data) onUpdateLead(data.lead_data);
+
+      if (data.reply) {
+        playReply(data.reply, data.audio_base64 ?? "", !data.audio_base64);
+      } else {
+        setAgentState("idle");
+      }
+    } catch (err) {
+      console.error(err);
+      setError(err instanceof Error ? err.message : "Something went wrong");
+      setAgentState("idle");
+    }
+  }, [sessionId, messages, onAddMessage, onUpdateLead, playReply]);
 
   // Start MediaRecorder
   const startRecording = useCallback(async () => {
@@ -282,7 +323,26 @@ export default function VoiceAgent({
           </div>
         )}
 
-        <MicButton state={agentState} onClick={handleMicClick} />
+        <div style={{ ...styles.inputRow, width: isMobile ? "100%" : "500px" }}>
+          <input
+            type="text"
+            placeholder="Type your message..."
+            value={inputText}
+            onChange={(e) => setInputText(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && sendTextMessage(inputText)}
+            style={styles.textInput}
+            disabled={agentState !== "idle"}
+          />
+          <MicButton state={agentState} onClick={handleMicClick} />
+          {inputText.trim() && agentState === "idle" && (
+            <button
+              onClick={() => sendTextMessage(inputText)}
+              style={styles.sendButton}
+            >
+              ➔
+            </button>
+          )}
+        </div>
 
         <p style={styles.hint}>
           {agentState === "idle" && "Click to speak"}
@@ -317,4 +377,7 @@ const styles: Record<string, React.CSSProperties> = {
   speakingHint: { display: "flex", alignItems: "center", gap: "10px", fontSize: "14px", color: "#065f46", maxWidth: "500px", textAlign: "center", background: "#f0fdf4", padding: "8px 16px", borderRadius: "20px", border: "1px solid #dcfce7" },
   speakingText: { color: "#065f46", fontStyle: "italic", fontWeight: 500 },
   hint: { fontSize: "12px", color: "#94a3b8", fontWeight: 500, marginTop: "4px" },
+  inputRow: { display: "flex", alignItems: "center", gap: "16px", background: "rgba(255, 255, 255, 0.8)", padding: "8px 16px", borderRadius: "40px", boxShadow: "0 4px 20px rgba(54, 116, 181, 0.08)", border: "1px solid rgba(54, 116, 181, 0.15)" },
+  textInput: { flex: 1, border: "none", background: "transparent", outline: "none", fontSize: "15px", color: "#1e3a8a", padding: "8px 4px", fontWeight: 500 },
+  sendButton: { background: "#3674B5", color: "white", border: "none", width: "40px", height: "40px", borderRadius: "50%", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "18px", transition: "all 0.2s" },
 };

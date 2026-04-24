@@ -104,6 +104,7 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: "15px",
     lineHeight: "1.6",
     fontWeight: 500,
+    whiteSpace: "pre-wrap",
   },
   time: {
     fontSize: "10px",

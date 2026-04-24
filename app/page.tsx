@@ -20,12 +20,14 @@ export interface LeadData {
   bhk_type?: string;
   timeline?: string;
   phone?: string;
+  preferences?: string;
   score: number;
   // Geocoding info
   lat?: number;
   lng?: number;
   formatted_address?: string;
   nearby_landmarks?: string[];
+  listings?: any[];
 }
 
 export default function Home() {
@@ -97,6 +99,7 @@ export default function Home() {
           formattedAddress={leadData.location}
           locationName={leadData.location}
           nearbyLandmarks={leadData.nearby_landmarks}
+          listings={leadData.listings}
         />
       </div>
     </div>
