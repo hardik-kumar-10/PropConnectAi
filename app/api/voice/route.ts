@@ -106,9 +106,11 @@ Your goals:
 Guidelines:
 - Language: Sophisticated English. Strictly NO Hinglish.
 - NO EMOJIS.
+- NO ASTERISKS. DO NOT use bold formatting (e.g., **text**).
+- NO MARKDOWN formatting at all.
 - Be extremely specific. Mention property names and exact prices.
 - FORMATTING: Use clear bullet points and line breaks for listing properties. For example:
-  - **Property Name**: Price and details.
+  - Property Name: Price and details.
 - If listings are provided, prioritize pitching them over general advice.${landmarkContext}${marketContext}${listingContext}`
 }
 
@@ -342,7 +344,7 @@ export async function POST(req: NextRequest) {
       temperature: 0.7,
     })
 
-    const assistantReply = salesResponse.choices[0]?.message?.content?.trim() ?? ''
+    const assistantReply = (salesResponse.choices[0]?.message?.content?.trim() ?? '').replace(/\*/g, '')
 
     // ── 4. Persistence ─────────────────────────────────────────────────────
     if (sessionId) {
@@ -379,7 +381,7 @@ export async function POST(req: NextRequest) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               input: {
-                text: assistantReply.replace(/[^\x00-\x7F]/g, "") // Removes non-ASCII characters (emojis)
+                text: assistantReply.replace(/\*/g, "").replace(/[^\x00-\x7F]/g, "") // Removes asterisks and non-ASCII characters (emojis)
               },
               voice: { languageCode: 'en-IN', name: 'en-IN-Wavenet-D' },
               audioConfig: { audioEncoding: 'MP3', speakingRate: 1.05 },

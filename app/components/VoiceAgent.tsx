@@ -59,7 +59,7 @@ export default function VoiceAgent({
   const speakText = useCallback((text: string) => {
     if (typeof window === "undefined" || !window.speechSynthesis) return;
     window.speechSynthesis.cancel();
-    const utter = new SpeechSynthesisUtterance(text);
+    const utter = new SpeechSynthesisUtterance(text.replace(/\*/g, ""));
     utter.lang = "en-IN";
     utter.rate = 1.0;
     utter.pitch = 1.1;
